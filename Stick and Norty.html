@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<style>
+		
+	body 
+	{ 
+		background-color: orange;
+		background-image: url("SpaceBackground.png");
+		background-repeat: repeat;
+	}
+	h1 {color: #0000FF;}
+	h2 {color: #00FFFF;}
+	</style>
+	
+	<title>Stick and Snorty</title>
+</head>
+
+<body>
+	<center>
+		<h1>Stick and Norty!</h1>
+		<canvas id="myCanvas" width="800" height="600"></canvas>
+		<h1 id="scoreboard">Score: 0</h1>
+		<h2> Try to score 50 or more! </h2>
+	</center>
+	
+	<img id="imageStick" style="display:none;" src="8BitStickSmallTest.png"></img>
+	<img id="imageNorty" style="display:none;" src="8BitNortySmall.png"></img>
+	<img id="imageNortyTiny" style="display:none;" src="8BitNortyTiny.png"></img>
+	<img id="bullet" style="display:none;" src="Bullet.png"></img>
+	<img id="background" style="display:none;" src="SpaceBackground.png"></img>
+	
+	<audio id="Gunshot">
+		<source src="Gunshot.mp3"></source>
+	</audio>
+	
+	<audio id="winSound">
+		<source src="WinSound.wav"></source>
+	</audio>
+	
+	<audio id="gameOverSound">
+		<source src="GameOver.wav"></source>
+	</audio>
+	
+	<script>
+		var gameState;
+		var canvas;
+		var drawing;
+		
+		/*	Sprite Functions */
+		
+		var makeSprite = function(imageName, x, y, vx, vy)
+		{
+			var sprite={};
+			sprite.image = document.getElementById(imageName);
+			sprite.x = x;
+			sprite.y = y;
+			sprite.w = sprite.image.width;
+			sprite.h = sprite.image.height;
+			sprite.vx = vx;
+			sprite.vy = vy;
+			return sprite;
+		}
+		
+		var drawSprite = function(s)
+		{
+			drawing.drawImage(s.image,s.x,s.y,s.w,s.h);
+		}
+		
+		var moveSprite = function(s)
+		{
+			//apply velocities appropriately
+			s.x += s.vx;
+			s.y += s.vy;
+
+			//keeps the sprite on the canvas horizontally
+			if (s.x > (canvas.width-s.w)) 
+			{
+				s.x = canvas.width-s.w;
+			}
+			if (s.x < 0)
+			{
+				s.x = 0;
+			}
+			//keeps the sprite on the canvas vertically
+			if(s.y > canvas.height-s.h)
+			{
+				s.y = -s.h+canvas.height;
+			}
+			if(s.y < 0)
+			{
+				s.y = 0;
+			}
+		}
+		
+		var moveShots = function(s)
+		{
+			//apply velocities appropriately
+			s.x += s.vx;
+			s.y += s.vy;
+			
+		}
+		
+		//this moves Norty up and down
+		var moveNorty = function (s)
+		{
+			s.y += s.vy;
+			
+			if(s.y > 450)
+			{
+				s.vy = -s.vy;
+			}
+			if(s.y < 100)
+			{
+				s.vy = -s.vy;
+			}
+		}
+		
+		var spriteOnCanvas = function(sprite)
+		{
+			var cw = canvas.width;
+			var ch = canvas.height;
+			s = getCollisionBounds(sprite);
+
+			// too far right or left
+			if (s.xmin < 0) return false;
+			if (s.xmax > canvas.width) return false;
+
+			// to high or low
+			if (s.ymin < 0) return false;
+			if (s.ymax > canvas.height) return false;
+
+			//if not too high, low, left, or right then must be on canvas
+			return true;
+		}
+		
+		/*	Key Functions	*/
+		
+		var onKeyDown = function(event)
+		{
+			var stick = gameState.stick;
+			
+			//a key moves sprite left
+			if(event.keyCode == 65)
+			{
+				stick.vx = -2.0;
+			}
+			//d key moves sprite right
+			if(event.keyCode == 68)
+			{
+				stick.vx = 2.0;
+			}
+			//w key moves sprite up
+			if(event.keyCode == 87)
+			{
+				stick.vy = -2.0;
+			}
+			//s key moves sprite down
+			if(event.keyCode == 83)
+			{
+				stick.vy = 2.0;
+			}
+			
+			//Space fires a bullet horizontally from Stick'
+			if(event.keyCode == 32)
+			{
+				var s = gameState.stick;
+				var t = new makeSprite("bullet",0,0,10,0);
+				//t.x = s.x + 0.5 * s.w - 0.5 * t.w;
+				//t.y = s.y - t.h;
+				t.y = s.y + 0.5 * s.h - 0.5 * t.h;
+				t.x = s.x + t.w;
+				
+				gameState.shots.push(t);
+				
+				var gunshotSound = document.getElementById("Gunshot");
+				gunshotSound.currentTime = 0;
+				gunshotSound.play();
+			}
+		}
+		
+		var onKeyUp = function(event)
+		{
+			var stick = gameState.stick;
+			
+			//when a or d key is released the sprite stops moving
+			if(event.keyCode == 65 || event.keyCode==68)
+			{
+				stick.vx = 0;
+			}
+			//if the w or s key is released then the sprite stops moving
+			if(event.keyCode == 87 || event.keyCode == 83)
+			{
+				stick.vy = 0;
+			}
+		}
+		
+		/*	Collision Functions	*/
+		
+		var getCollisionBounds = function(sprite)
+		{
+			var bounds = {};
+			bounds.xmin = sprite.x;
+			bounds.ymin = sprite.y;
+			bounds.xmax = sprite.x + sprite.w;
+			bounds.ymax = sprite.y + sprite.h;
+			//console.log("bounds: " + bounds);
+			return bounds;
+		}
+		var spritesCollide = function(spriteA, spriteB)
+		{
+			// collision bounds for spriteA and spriteB
+			var a = getCollisionBounds(spriteA); 
+			var b = getCollisionBounds(spriteB);
+
+			// spriteB is to the right or left of spriteA
+			if (b.xmin > a.xmax) return false;
+			if (b.xmax < a.xmin) return false;
+
+			// spriteB is above or below spriteA
+			if (b.ymax < a.ymin) return false;
+			if (b.ymin > a.ymax) return false;
+
+			// The two sprites collide if spriteA is not
+			// left of, right of, above, or below spriteB
+			return true;
+		}
+
+		
+		var collideShot = function(s)
+		{
+			var stick = gameState.stick;
+			var shot = gameState.shots[s];
+			var norty = gameState.norty;
+			var nortyTiny = gameState.nortyTiny;
+			var enemies = gameState.enemies;
+			var scoreboard = document.getElementById("scoreboard");
+			
+			//if a shot hits norty you get 1 point
+			if (spritesCollide(shot, norty))
+			{
+				gameState.shots.splice(s, 1); 		// delete shot
+				gameState.score += 1;
+				scoreboard.innerHTML = "Score: " + gameState.score;
+				return;
+			}
+			
+			//if a shot hits the smaller norty then you get 5 points
+			if(spritesCollide(shot,nortyTiny))
+			{
+				gameState.shots.splice(s, 1); 		// delete shot
+				gameState.score += 5;
+				scoreboard.innerHTML = "Score: " + gameState.score;
+				return;
+			}
+			
+			//if stick collides with norty or small norty, then game over!
+			if(spritesCollide(stick,norty))
+			{
+				gameState.gameOver = true;
+			}
+			if(spritesCollide(stick,nortyTiny))
+			{
+				gameState.gameOver = true;
+			}
+		}
+		
+		
+		
+		/* Drawing Functions */
+		
+		var drawGame = function()
+		{
+			var w = canvas.width;
+			var h = canvas.height;
+			var shots = gameState.shots;
+			
+			drawing.fillStyle = "#BBBBFF";  
+			drawing.fillRect(0,0,w,h);      
+			drawing.strokeRect(0,0,w,h);    
+			
+			drawing.save();
+			
+			drawSprite(gameState.stick);
+			drawSprite(gameState.norty);
+			drawSprite(gameState.nortyTiny);
+			
+			for (var i = 0; i < shots.length;i++)
+			{
+				drawSprite(shots[i]);
+			}
+			
+			if(gameState.gameOver == true)
+			{
+				drawing.font = "100px Arial";
+				drawing.fillStyle = "#ff0000";
+				drawing.textAlign = "center";
+				drawing.fillText("GAME OVER", canvas.width/2, canvas.height/2);
+				var gameOverSound = document.getElementById("gameOverSound");
+				gameOverSound.play();
+			}
+			
+			if(gameState.won == true)
+			{
+				drawing.font = "100px Arial";
+				drawing.fillStyle = "#ffffff";
+				drawing.textAlign = "center";
+				drawing.fillText("WINNER!", canvas.width/2, canvas.height/2);
+				var winSound = document.getElementById("winSound");
+				winSound.play();
+			}
+			
+			//drawSprite(gameState.background);
+		}
+		
+		var animateGame = function()
+		{
+			window.requestAnimationFrame(animateGame);
+			if(gameState.won == true) return;
+			if(gameState.gameOver == true) return;
+			
+			var stick = gameState.stick;
+			var norty = gameState.norty;
+			var nortyTiny = gameState.nortyTiny;
+			var shots = gameState.shots;
+			
+			moveSprite(gameState.stick);
+			
+			for(var i = 0; i < shots.length;i++)
+			{
+				moveShots(gameState.shots[i]);
+			}
+			
+			moveNorty(gameState.norty);
+			moveNorty(gameState.nortyTiny);
+			
+			if (stick.y > canvas.height)
+			{
+				stick.x = 50
+				stick.y = 10
+				var death = document.getElementById("death");
+				death.currentTime = 0
+				death.play();
+			}
+
+			
+			for (var s = gameState.shots.length-1; s >= 0; s--)
+			{
+				collideShot(s);
+			}
+			
+			
+			if(gameState.score > 49)
+			{
+				gameState.won = true;
+			}
+			
+			drawGame();			
+		}
+		
+		
+		
+		window.onload = function()
+		{
+			window.addEventListener("keydown", onKeyDown);
+			window.addEventListener("keyup", onKeyUp);
+			canvas = document.getElementById("myCanvas");
+			drawing = canvas.getContext("2d");
+			drawing.fillStyle = "blue";
+			drawing.fillRect(0,0,800,600);
+			canvas.style.opacity = '0.8';
+			
+			gameState = {};
+			
+			gameState.stick = makeSprite("imageStick",10,canvas.height/2,0,0);
+			gameState.norty = makeSprite("imageNorty",600,200,0,2);
+			gameState.nortyTiny = makeSprite("imageNortyTiny",700,400,0,4);
+			gameState.shots = [];
+			gameState.enemies = [];
+			gameState.enemies.push(gameState.norty);
+			gameState.enemies.push(gameState.nortyTiny);
+			gameState.score = 0;
+			
+			var background = makeSprite("background", -900,0,0,0);
+			background.w=900;
+			background.h=650;
+			
+			animateGame();
+		}
+	</script>
+
+
+
+</body>
+</html>
